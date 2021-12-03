@@ -6,8 +6,8 @@ import Node from './Node'
 import { Grid } from '@mui/material';
 
 class App extends React.Component {
-  renderNode(name) {
-    return <Node name={name}/>;
+  renderNode(node) {
+    return <Node name={node}/>;
   }
 
   render() {
@@ -17,7 +17,7 @@ class App extends React.Component {
         <h1>Pi-Portal</h1>
         <Grid container spacing={4}>
           {nodeList.map((node) => {
-            return <Grid item xs={4} md={4}>{this.renderNode(node)}</Grid>
+            return <Grid key={node} item xs={4} md={4}>{this.renderNode(node)}</Grid>
           })}
         </Grid>
       </div>

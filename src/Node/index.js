@@ -8,6 +8,8 @@ import CardContent from '@mui/material/CardContent';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import { Grid, ImageList, ImageListItem } from '@mui/material';
+import axios from 'axios';
+import { green, lightBlue } from '@mui/material/colors';
 const pimage = process.env.PUBLIC_URL + "/raspberry-pi.png"
 
 class Node extends React.Component {    
@@ -19,14 +21,15 @@ class Node extends React.Component {
     constructor(props) {
         super(props); // initiliazes this
 
-        //node state
+        //initial node state
         this.state = {
             status: "n/a",
             stats: {
                 cpu: "n/a",
                 mem: "n/a",
                 ip: "n/a",
-                description: "n/a"
+                disk_space: "n/a",
+                desc: "n/a"
             }
         }
 
@@ -35,11 +38,22 @@ class Node extends React.Component {
         this.updateStats = this.updateStats.bind(this)
         this.changeStatus = this.changeStatus.bind(this) 
         this.handleError = this.handleError.bind(this)
+        this.checkHealth = this.checkHealth.bind(this)
+        this.kill = this.kill.bind(this)
+        this.reboot = this.reboot.bind(this)
+        this.makeCall = this.makeCall.bind(this)
+        this.update = this.update.bind(this)
     }
 
     updateStats(res) {
         this.setState({
-            stats: res.stats
+            stats: {
+                cpu: res.data.cpu,
+                mem: res.data.mem,
+                ip: res.data.ip,
+                disk_space: res.data.disk_space,
+                desc: res.data.desc
+            }
         })
     }
 
@@ -50,35 +64,72 @@ class Node extends React.Component {
         })
     }
 
-    getStats(name) {
-        const url = `http://${name}.${process.env.PIHOST}/stats`
-        fetch(url, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer token"
-            }
-        }).then(res => {
-            res = res.json()
+    getStats() {
+        const url = `http://${this.props.name}.${process.env.REACT_APP_PIHOST}/stats`
+        const method = "GET"
+        const responseHandler = (res => {
             this.updateStats(res)
         })
-        .catch(e => this.handleError(e))
+
+        this.makeCall(method, url, responseHandler)
     }
 
-    checkHealth(name) {
-        const url = `http://${name}.${process.env.PIHOST}/healthcheck`
-        fetch(url, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer token"
-            }
-        }).then(res => {
-            res = res.json()
+    checkHealth() {
+        const url = `http://${this.props.name}.${process.env.REACT_APP_PIHOST}/healthcheck`
+        const method = "GET"
+        const responseHandler = (res => {
+            console.log(`CheckHealt response ${res}`)
             this.changeStatus(res)
         })
-        .catch(e => this.handleError(e))
+
+        this.makeCall(method, url, responseHandler)
+    }
+
+    kill() {
+        const url = `http://${this.props.name}.${process.env.REACT_APP_PIHOST}/kill`
+        const method = "POST"
+        const responseHandler = (res => {
+            this.changeStatus(res)
+        })
+
+        this.makeCall(method, url, responseHandler)
+    }
+
+    reboot() {
+        const url = `http://${this.props.name}.${process.env.REACT_APP_PIHOST}/reboot`
+        const method = "POST"
+        const responseHandler = (res => {
+            this.changeStatus(res)
+        })
+
+        this.makeCall(method, url, responseHandler)
+    }
+
+    update() {
+        const url = `http://${this.props.name}.${process.env.REACT_APP_PIHOST}/update`
+        const method = "POST"
+        const responseHandler = (res => {
+            if (res.status === 204) {
+                console.log("Update successful")
+            }
+        })
         
+        this.makeCall(method, url, responseHandler)
+    } 
+
+    makeCall(method, target, responseHandler) {
+        //making http call with axios to proxy
+        axios({
+            method: method,
+            url: `${process.env.REACT_APP_PROXY}` + target,
+            headers: {
+                'Authorization': `Bearer test_tken`,
+                'Content-Type': 'application/json',
+                "origin": "Pi-Monitor"
+            }
+        })
+        .then(responseHandler)
+        .catch(e => this.handleError)
     }
 
     handleError(e) {
@@ -87,11 +138,14 @@ class Node extends React.Component {
 
     //will run when component is mounted
     componentDidMount() {
-        this.checkHealth(this.props.name)
-        this.getStats(this.props.name)
+        this.checkHealth()
+        this.getStats()
     }
 
     render() {
+        let statusColor = (this.state.status === "online") ? 'green' : 'red'
+        let displayDesc = (this.state.stats.desc === "n/a") ? "n/a" : this.state.stats.desc.substring(0,52) + "..."
+        let statsColor = "lightseagreen"
         return (
             <div>
                 <Card raised="true" sx={{minWidth: 275}}>
@@ -100,7 +154,7 @@ class Node extends React.Component {
                             <b>{this.props.name}</b>
                         </Typography>
                         <Typography>
-                            <p><b>Status:</b> {this.state.status}</p>
+                            <p style={{color: statusColor}}><b style={{color: "black"}}>Status:</b> {this.state.status}</p>
                         </Typography>
                         <ImageListItem>
                           <img src={`${pimage}?w=164&h=164&fit=crop&auto=format`} 
@@ -110,16 +164,19 @@ class Node extends React.Component {
                         </ImageListItem>
                         <Typography variant="body2">
                             <ul>
-                                <li><b>CPU:</b> {this.state.stats.cpu}</li>
-                                <li><b>MEM:</b> {this.state.stats.mem}</li>
-                                <li><b>IP:</b> {this.state.stats.ip}</li>
-                                <li><b>DESC:</b> {this.state.stats.description}</li>
+                                <li><b>CPU:</b> <b style={{color: statsColor}}>{this.state.stats.cpu}</b></li>
+                                <li><b>MEM:</b> <b style={{color: statsColor}}>{this.state.stats.mem}</b></li>
+                                <li><b>SPACE:</b> <b style={{color: statsColor}}>{this.state.stats.disk_space}</b></li>
+                                <li><b>IP:</b> <b style={{color: statsColor}}>{this.state.stats.ip}</b></li>
+                                <li><b>DESC:</b> <b style={{color: statsColor}}>{displayDesc}</b></li>
                             </ul>
                         </Typography>
                     </CardContent>
                     <CardActions>
-                        <Button size="small" color="error" variant="contained">Kill</Button>
-                        <Button size="small" color="secondary" variant="contained">Refresh</Button>
+                        <Button size="small" color="secondary" variant="contained" onClick={this.reboot}>Reboot</Button>
+                        <Button size="small" color="error" variant="contained" onClick={this.kill}>Kill</Button>
+                        <Button size="small" color="primary" variant="contained" onClick={() => {this.checkHealth(); this.getStats()}}>Refresh</Button>
+                        <Button size="small" color="success" variant="contained" onClick={this.update}>Update</Button>
                     </CardActions>
                 </Card>
             </div>
